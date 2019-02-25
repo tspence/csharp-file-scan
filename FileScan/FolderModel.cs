@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 
 namespace FileScan
 {
@@ -19,5 +20,15 @@ namespace FileScan
         /// Child folders within this folder
         /// </summary>
         public List<FolderModel> folders { get; set; }
+
+        /// <summary>
+        /// Total all files and folders inside this thing
+        /// </summary>
+        /// <returns>The items.</returns>
+        public int TotalItems()
+        {
+            return 1 + files.Count + (from f in folders select f.TotalItems()).Sum();
+        }
+
     }
 }

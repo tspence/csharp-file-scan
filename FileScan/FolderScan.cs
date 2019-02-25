@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -8,11 +8,12 @@ namespace FileScan
 {
     public class FolderScan
     {
+        public static int FoldersScanned = 0;
+        public static int FilesScanned = 0;
+        public static DateTime LastPrintTime = DateTime.MinValue;
+
         public static FolderModel ScanFolder(string path)
         {
-            var this_dir = new DirectoryInfo(path);
-            Console.Write($"Scanning {path}...");
-
             // Insert this folder
             var folder = new FolderModel()
             {
@@ -21,26 +22,43 @@ namespace FileScan
                 folders = new List<FolderModel>()
             };
 
-            // Insert all files
-            foreach (var f in this_dir.GetFiles())
+            // Scan and capture problems
+            try
             {
-                folder.files.Add(new FileModel()
+                var this_dir = new DirectoryInfo(path);
+
+                // Insert all files
+                foreach (var f in this_dir.GetFiles())
                 {
-                    name = f.Name,
-                    size = f.Length,
-                    last_modified = f.LastWriteTime.ToString(),
-                    hash = ""
-                });
-            }
+                    folder.files.Add(new FileModel()
+                    {
+                        name = f.Name,
+                        size = f.Length,
+                        last_modified = f.LastWriteTime.ToString(),
+                        hash = ""
+                    });
+                    FilesScanned++;
+                }
 
-            // Insert subfolders
-            foreach (var d in this_dir.GetDirectories())
+                // Insert subfolders
+                foreach (var d in this_dir.GetDirectories())
+                {
+                    folder.folders.Add(ScanFolder(d.FullName));
+                }
+            } 
+            catch (Exception ex)
             {
-                folder.folders.Add(ScanFolder(d.FullName));
+                System.Diagnostics.Debug.WriteLine($"Exception scanning {path}: {ex.Message}.");
             }
 
-            // Here you go
-            Console.WriteLine($"{folder.files.Count} files.");
+            // Here's the folder we scanned
+            FoldersScanned++;
+            var ts = DateTime.UtcNow - LastPrintTime;
+            if (ts.TotalMilliseconds > 100)
+            {
+                Console.Write($"\rScanned {FoldersScanned} folders, {FilesScanned} files...");
+                LastPrintTime = DateTime.UtcNow;
+            }
             return folder;
         }
     }

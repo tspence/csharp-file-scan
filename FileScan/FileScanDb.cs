@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Data.SQLite;
@@ -18,8 +18,8 @@ namespace FileScan
             // Setup tables
             using (var conn = new SQLiteConnection(_connection_string))
             {
-                conn.Execute("drop table folders;");
-                conn.Execute("drop table files;");
+                conn.Execute("drop table if exists folders;");
+                conn.Execute("drop table if exists files;");
                 conn.Execute(@"create table if not exists folders (
                     id integer primary key not null,
                     parent_folder_id integer not null,
@@ -72,12 +72,20 @@ namespace FileScan
                     while (queue.Count > 0)
                     {
                         var current_folder = queue.Dequeue();
-                        Console.WriteLine($"Inserting {current_folder.name} into database (Queued: {queue.Count})");
+                        Console.Write($"\rInserting {queue.Count} items into database...");
 
                         // Insert this folder and get its ID
                         folder_cmd.Parameters["@name"].Value = current_folder.name;
                         folder_cmd.Parameters["@parent_folder_id"].Value = current_folder.parent_folder_id;
-                        current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
+
+                        // Try to insert file
+                        try
+                        {
+                            current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
+                        } catch (Exception e1)
+                        {
+                            System.Diagnostics.Debug.WriteLine("Exception: " + e1.ToString());
+                        }
 
                         // Assign the ID to all children
                         foreach (var f in current_folder.files)
@@ -88,7 +96,16 @@ namespace FileScan
                             file_cmd.Parameters["@size"].Value = f.size;
                             file_cmd.Parameters["@hash"].Value = f.hash;
                             file_cmd.Parameters["@last_modified"].Value = f.last_modified;
-                            await file_cmd.ExecuteNonQueryAsync();
+
+                            // Try to insert file
+                            try
+                            {
+                                await file_cmd.ExecuteNonQueryAsync();
+                            }
+                            catch (Exception e2)
+                            {
+                                System.Diagnostics.Debug.WriteLine("Exception: " + e2.ToString());
+                            }
                             current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
                         }
 
@@ -108,47 +125,6 @@ namespace FileScan
                     Console.WriteLine(ex.ToString());
                     tran.Rollback();
                 }
-            }
-        }
-
-        public async Task<long> CreateFile(FileModel f)
-        {
-            using (var conn = new SQLiteConnection(_connection_string))
-            {
-                conn.Open();
-                return (await conn.QueryAsync<long>(
-                    "INSERT INTO files (name, parent_folder_id, size, hash, last_modified) " +
-                    "VALUES (@name, @parent_folder_id, @size, @hash, @last_modified); SELECT last_insert_rowid();",
-                    new
-                    {
-                        name = f.name,
-                        parent_folder_id = f.parent_folder_id,
-                        size = f.size,
-                        hash = f.hash,
-                        last_modified = f.last_modified
-                    },
-                    null,
-                    null,
-                    System.Data.CommandType.Text)).FirstOrDefault();
-            }
-        }
-
-        public async Task<long> CreateFolder(FolderModel f)
-        {
-            using (var conn = new SQLiteConnection(_connection_string))
-            {
-                conn.Open();
-                return (await conn.QueryAsync<long>(
-                    "INSERT INTO folders (name, parent_folder_id) " +
-                    "VALUES (@name, @parent_folder_id); SELECT last_insert_rowid();",
-                    new
-                    {
-                        name = f.name,
-                        parent_folder_id = f.parent_folder_id,
-                    },
-                    null,
-                    null,
-                    System.Data.CommandType.Text)).FirstOrDefault();
             }
         }
     }
