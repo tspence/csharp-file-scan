@@ -34,7 +34,7 @@ namespace FileScan
                     {
                         name = f.Name,
                         size = f.Length,
-                        last_modified = f.LastWriteTime.ToString(),
+                        last_modified = f.LastWriteTime.ToString("o"),
                         hash = ""
                     });
                     FilesScanned++;

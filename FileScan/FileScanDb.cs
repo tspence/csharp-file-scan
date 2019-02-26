@@ -82,7 +82,8 @@ namespace FileScan
                         try
                         {
                             current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
-                        } catch (Exception e1)
+                        }
+                        catch (Exception e1)
                         {
                             System.Diagnostics.Debug.WriteLine("Exception: " + e1.ToString());
                         }
@@ -106,7 +107,6 @@ namespace FileScan
                             {
                                 System.Diagnostics.Debug.WriteLine("Exception: " + e2.ToString());
                             }
-                            current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
                         }
 
                         // Queue up all the child folders

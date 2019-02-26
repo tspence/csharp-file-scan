@@ -17,7 +17,7 @@ namespace FileScan
                 Console.WriteLine($"\rFinished scanning {total_items} items in {sw.Elapsed.ToString()}.");
 
                 // Connect to the database
-                var db = new FileScanDb("Data Source=filescan.db;Version=3;");
+                var db = new FileScanDb("Data Source=csharp-filescan.db;Version=3;");
 
                 // Insert into the clean, empty database
                 sw = new System.Diagnostics.Stopwatch();
