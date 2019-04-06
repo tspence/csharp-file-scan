@@ -10,6 +10,7 @@ namespace FileScan
         public long id { get; set; }
         public string name { get; set; }
         public long parent_folder_id { get; set; }
+        public long? total_size { get; set; }
 
         /// <summary>
         /// Child files within this folder
@@ -29,6 +30,5 @@ namespace FileScan
         {
             return 1 + files.Count + (from f in folders select f.TotalItems()).Sum();
         }
-
     }
 }

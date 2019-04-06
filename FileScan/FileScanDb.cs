@@ -23,6 +23,7 @@ namespace FileScan
                 conn.Execute(@"create table if not exists folders (
                     id integer primary key not null,
                     parent_folder_id integer not null,
+                    total_size integer null,
                     name text not null
                 ); ");
                 conn.Execute(@"create table if not exists files (
@@ -36,6 +37,11 @@ namespace FileScan
             }
         }
 
+        /// <summary>
+        /// Write just this folder and its files to the DB
+        /// </summary>
+        /// <param name="folder"></param>
+        /// <returns></returns>
         public async Task Write(FolderModel folder)
         {
             using (var conn = new SQLiteConnection(_connection_string))
@@ -44,77 +50,29 @@ namespace FileScan
                 var tran = conn.BeginTransaction();
                 try
                 {
-                    // Keep track of what folders we have to insert
-                    Queue<FolderModel> queue = new Queue<FolderModel>();
-                    queue.Enqueue(folder);
+                    // Insert the folder
+                    var result = await conn.QueryAsync<long>("INSERT OR IGNORE INTO folders "
+                        + "(name, total_size, parent_folder_id) "
+                        + "VALUES (@name, @total_size, @parent_folder_id); "
+                        + "SELECT last_insert_rowid();", folder, tran, null, System.Data.CommandType.Text);
+                    folder.id = result.FirstOrDefault();
 
-                    // Create a folder insert command
-                    var folder_cmd = conn.CreateCommand();
-                    folder_cmd.CommandText = "INSERT OR IGNORE INTO folders "
-                        + "(name, parent_folder_id) "
-                        + "VALUES (@name, @parent_folder_id); "
-                        + "SELECT last_insert_rowid();";
-                    folder_cmd.Parameters.AddWithValue("@name", "");
-                    folder_cmd.Parameters.AddWithValue("@parent_folder_id", 0);
-
-                    // Create a file insert command
-                    var file_cmd = conn.CreateCommand();
-                    file_cmd.CommandText = "INSERT OR IGNORE INTO files "
-                        + "(name, parent_folder_id, size, hash, last_modified) "
-                        + "VALUES (@name, @parent_folder_id, @size, @hash, @last_modified)";
-                    file_cmd.Parameters.AddWithValue("@name", "");
-                    file_cmd.Parameters.AddWithValue("@parent_folder_id", 0);
-                    file_cmd.Parameters.AddWithValue("@size", 0);
-                    file_cmd.Parameters.AddWithValue("@hash", "");
-                    file_cmd.Parameters.AddWithValue("@last_modified", "");
-
-                    // Start processing them as fast as possible
-                    while (queue.Count > 0)
+                    // Assign the ID to all children and insert them
+                    foreach (var file in folder.files)
                     {
-                        var current_folder = queue.Dequeue();
-                        Console.Write($"\rInserting {queue.Count} items into database...");
+                        file.parent_folder_id = folder.id;
+                        var result2 = await conn.QueryAsync<long>("INSERT OR IGNORE INTO files "
+                        + "(name, parent_folder_id, size, hash, last_modified) "
+                        + "VALUES (@name, @parent_folder_id, @size, @hash, @last_modified);"
+                        + "SELECT last_insert_rowid();", file, tran, null, System.Data.CommandType.Text);
+                        file.id = result2.FirstOrDefault();
+                    }
 
-                        // Insert this folder and get its ID
-                        folder_cmd.Parameters["@name"].Value = current_folder.name;
-                        folder_cmd.Parameters["@parent_folder_id"].Value = current_folder.parent_folder_id;
-
-                        // Try to insert file
-                        try
-                        {
-                            current_folder.id = (long)(await folder_cmd.ExecuteScalarAsync());
-                        }
-                        catch (Exception e1)
-                        {
-                            System.Diagnostics.Debug.WriteLine("Exception: " + e1.ToString());
-                        }
-
-                        // Assign the ID to all children
-                        foreach (var f in current_folder.files)
-                        {
-                            f.parent_folder_id = current_folder.id;
-                            file_cmd.Parameters["@name"].Value = f.name;
-                            file_cmd.Parameters["@parent_folder_id"].Value = f.parent_folder_id;
-                            file_cmd.Parameters["@size"].Value = f.size;
-                            file_cmd.Parameters["@hash"].Value = f.hash;
-                            file_cmd.Parameters["@last_modified"].Value = f.last_modified;
-
-                            // Try to insert file
-                            try
-                            {
-                                await file_cmd.ExecuteNonQueryAsync();
-                            }
-                            catch (Exception e2)
-                            {
-                                System.Diagnostics.Debug.WriteLine("Exception: " + e2.ToString());
-                            }
-                        }
-
-                        // Queue up all the child folders
-                        foreach (var f in current_folder.folders)
-                        {
-                            f.parent_folder_id = current_folder.id;
-                            queue.Enqueue(f);
-                        }
+                    // Update all the child folders
+                    foreach (var subfolder in folder.folders)
+                    {
+                        await conn.ExecuteAsync("UPDATE folders SET parent_folder_id = @parent_folder_id WHERE id = @id;",
+                            new { parent_folder_id = folder.id, id = subfolder.id }, tran, null, System.Data.CommandType.Text);
                     }
 
                     // We're done
